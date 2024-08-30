@@ -1,0 +1,20 @@
+systém s registrací - odolnost phishingovému útoku
+
+
+
+- webová appka
+- generátor zpráv, chatbots
+- generátor webových stránek (kopie webovek bank atp)
+
+
+řekni chatbotovi "napiš email pro osobu s tématem"...
+
+
+
+Cíl:
+nástroj pro zjištění odolnosti organizace proti phishingovému útoku
+
+Provedení:
+- AI generátor znění emailu + odkaz
+- AI generátor webu
+- webová API: uložení emailu, který targetujeme do databáze (Json?)
