@@ -1,11 +1,13 @@
 from flask import Flask, request, render_template_string
 import re
+import os
 import sqlite3
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
-def init_db():
-    conn = sqlite3.connect('emails.db')
+# Vytvoření databáze a tabulky při startu aplikace
+def ensure_db_initialized():
+    conn = sqlite3.connect(r'C:/Users/thujn/Diplomka/nástroj/web_api/emails.db')
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS emails (
@@ -15,6 +17,10 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
+ensure_db_initialized()
+
+
 
 # Kontrola, zda je text validním emailem
 def is_valid_email(email):
@@ -39,7 +45,7 @@ def index():
             message_color = "red"
         else:
             try:
-                conn = sqlite3.connect('emails.db')
+                conn = sqlite3.connect(r'C:/Users/thujn/Diplomka/nástroj/web_api/emails.db')
                 cursor = conn.cursor()
                 cursor.execute('INSERT INTO emails (email) VALUES (?)', (email,))
                 conn.commit()
@@ -133,5 +139,4 @@ def index():
     ''', message=message, message_color=message_color)
 
 if __name__ == '__main__':
-    init_db()
     app.run(debug=True)
