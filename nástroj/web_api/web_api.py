@@ -1,31 +1,40 @@
 from flask import Flask, request, render_template_string
 import re
 import os
+import json
+import os
 import sqlite3
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
 # Vytvoření databáze a tabulky při startu aplikace
 def ensure_db_initialized():
-    conn = sqlite3.connect(r'C:/Users/thujn/Diplomka/nástroj/web_api/emails.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS emails (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT NOT NULL UNIQUE
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'emails.db')
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS emails (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT NOT NULL UNIQUE
+                )
+            ''')
+            conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    except Exception as e:
+        print(f"Exception occurred: {e}")
 
 ensure_db_initialized()
-
-
 
 # Kontrola, zda je text validním emailem
 def is_valid_email(email):
     regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     return re.match(regex, email)
+
+# Kontrola, zda byl udělen souhlas
+def has_consent(consent):
+    return consent is not None
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -34,26 +43,29 @@ def index():
     if request.method == 'POST':
         email = request.form['email']
         consent = request.form.get('consent')
-        if not consent and not is_valid_email(email):
-            message = "Pro zapsání e-mailu do databáze zaškrtněte souhlas a zadejte email ve tvaru 'example@example.smt'"
+        if not has_consent(consent) and not is_valid_email(email):
+            message = "Pro zapsání e-mailu do databáze <strong>zaškrtněte souhlas</strong> a <strong>zadejte email ve tvaru</strong>: 'example@example.smt'"
             message_color = "red"
-        elif not consent:
-            message = "Pro zapsání e-mailu do databáze zaškrtněte souhlas."
+        elif not has_consent(consent):
+            message = "Pro zapsání e-mailu do databáze <strong>zaškrtněte souhlas</strong>."
             message_color = "red"
         elif not is_valid_email(email):
-            message = "Zadejte prosím pouze e-mailovou adresu ve tvaru: 'example@example.smt'"
+            message = "Zadejte prosím pouze <strong>e-mailovou adresu ve tvaru</strong>: 'example@example.smt'"
             message_color = "red"
         else:
             try:
-                conn = sqlite3.connect(r'C:/Users/thujn/Diplomka/nástroj/web_api/emails.db')
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO emails (email) VALUES (?)', (email,))
-                conn.commit()
-                conn.close()
+                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'emails.db')
+                with sqlite3.connect(db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('INSERT INTO emails (email) VALUES (?)', (email,))
+                    conn.commit()
                 message = "Váš e-mail byl přidán do databáze."
                 message_color = "green"
             except sqlite3.IntegrityError:
                 message = "Email již existuje!"
+                message_color = "red"
+            except sqlite3.Error as e:
+                message = f"Database error: {e}"
                 message_color = "red"
 
     return render_template_string('''
@@ -69,8 +81,8 @@ def index():
                     background: url('{{ url_for('static', filename='web_api_image.webp') }}') no-repeat center center fixed;
                     background-attachment: fixed;
                     background-size: cover;
-                    background-size: cover;
                     background-position: center;
+                    background-color: #f0f0f0; /* Fallback color if image cannot be loaded */
                     display: flex;
                     justify-content: center;
                     align-items: center;
@@ -131,7 +143,7 @@ def index():
                     <input type="submit" value="Odeslat">
                 </form>
                 {% if message %}
-                <p class="message" style="color: {{ message_color }};">{{ message }}</p>
+                <p class="message" style="color: {{ message_color }};">{{ message|safe }}</p>
                 {% endif %}
             </div>
         </body>
@@ -139,4 +151,6 @@ def index():
     ''', message=message, message_color=message_color)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    import os
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(debug=debug_mode)
