@@ -106,8 +106,13 @@ headers_list = [
     }
 ]
 
+# Funkce pro zobrazení URL stránek, které se scrapují
+def log_scraping_attempt(url):
+    print(f"Scraping: {url}")
+
 # Extrahuje data jako adresy, telefonní čísla, sportovní kluby, zaměstnání a sociální profily
 def scrape_information_from_url(url, name_to_search):
+    log_scraping_attempt(url)  # Logování URL
     try:
         # Odeslání HTTP GET požadavku na poskytnutou URL adresu s náhodným User-Agent záhlavím a nastavením timeoutu
         response = requests.get(url, headers=random.choice(headers_list), timeout=10)
