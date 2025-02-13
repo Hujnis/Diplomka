@@ -11,9 +11,9 @@ from bs4 import BeautifulSoup
 import re
 import instaloader
 
-#_________________________________________________________________
-#                           DICTIONARY
-#_________________________________________________________________
+#___________________________________________________________________________________________________________________
+#                                                     DICTIONARY
+#___________________________________________________________________________________________________________________
 
 
 # Získání cesty ke složce, kde je uložen tento skript
@@ -90,6 +90,10 @@ def extract_name_from_email(email):
 L = instaloader.Instaloader()
 scraped_instagrams = set()  # Sada pro ukládání už scrapnutých profilů
 
+def extract_instagram_username(url):
+    match = re.search(r"instagram\.com/([^/?#]+)", url)
+    return match.group(1) if match else None
+
 # Funkce pro extrakci uživatelského jména z Instagram URL
 def get_instagram_profile_details(username, retries=2):
     if username in scraped_instagrams:
@@ -103,9 +107,7 @@ def get_instagram_profile_details(username, retries=2):
             time.sleep(wait_time)
 
             profile = instaloader.Profile.from_username(L.context, username)
-
-            # Přidáme username do scrapnutých, abychom ho už nevolali znovu
-            scraped_instagrams.add(username)
+            scraped_instagrams.add(username)  # Přidáme username do scrapnutých
 
             return {
                 "full_name": profile.full_name,
@@ -248,16 +250,6 @@ def scrape_information_from_url(url, name_to_search):
                 #Pokud URL neobsahuje uživatelské jméno, ale text odkazu ano
                 elif site in link_text.lower():
                     temp_profiles.add(f"{site}/{link_text}")
-
-        # Hledání sociálních odkazů v <meta> a <script> blocích
-        for meta in soup.find_all("meta", content=True):
-            content = meta["content"]
-            for site in social_sites:
-                if site in content:
-                    href = clean_url(content)
-                    username = extract_username_from_url(href, site)
-                    if username:
-                        temp_profiles.add(f"{site}/{username}")
 
         # Použití textu pro analýzu dalších informací
         for line in text.splitlines():

@@ -1,0 +1,20 @@
+# Použití Python image
+FROM python:3.9
+
+# Nastavení pracovního adresáře
+WORKDIR /app
+
+# Kopírování všech souborů ze složky software
+COPY . /app
+
+# Instalace závislostí
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Exponování portu 5000
+EXPOSE 5000
+
+# Nastavení pracovní složky Flasku
+WORKDIR /app/web_api
+
+# Spuštění aplikace
+CMD ["python", "web_api.py"]
