@@ -1,28 +1,41 @@
-import requests
-from bs4 import BeautifulSoup
-import random
-import time
-from googlesearch import search
-import unicodedata
 import os
+import unicodedata
+import random
+import re
+import time
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
+from duckduckgo_search import DDGS
+from transformers import pipeline
 
-# Získání cesty ke složce, kde je uložen tento skript
+#___________________________________________________________________________________________________________________
+#                                                     DICTIONARY
+#___________________________________________________________________________________________________________________
+
+# Absolutní cesta k tomuto souboru (scraper.py)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-txt_path = os.path.join(script_dir, 'czech_names.txt')
 
-# Načtení slovníku českých jmen ze souboru s ošetřením chyb
+# Cesta k adresáři "dictionaries"
+dictionaries_dir = os.path.join(script_dir, "dictionaries")
+
+#___________________________________________________________________________________________________________________
+#                                                     First name
+
+# Načtení czech_names.txt
+czech_names_path = os.path.join(dictionaries_dir, "czech_names.txt")
 try:
-    with open(txt_path, 'r', encoding='utf-8') as f:
+    with open(czech_names_path, 'r', encoding='utf-8') as f:
         name_dictionary = set(line.strip() for line in f if line.strip())
 except FileNotFoundError:
-    print(f"Error: Soubor '{txt_path}' nebyl nalezen.")
-    name_dictionary = set()
-except Exception as e:
-    print(f"Error při čtení souboru '{txt_path}': {e}")
+    print(f"❌ Soubor '{czech_names_path}' nebyl nalezen.")
     name_dictionary = set()
 
-
-# Function to remove diacritics from text
 # Užitečné pro porovnávání jmen s diakritikou i bez ní
 def remove_diacritics(input_str):
     return ''.join(
@@ -31,46 +44,117 @@ def remove_diacritics(input_str):
     )
 
 # Vytvoření verze slovníku jmen bez diakritiky pro snazší porovnání
-dictionary_no_diacritics = {
+name_no_diacritics = {
     remove_diacritics(name).lower(): name for name in name_dictionary
 }
 
-# Kontrola, zda je dané jméno ve slovníku (bez ohledu na velikost písmen, bez diakritiky)
-def is_name_in_dictionary(name):
-    name_no_diacritics = remove_diacritics(name).lower()
-    return name_no_diacritics in dictionary_no_diacritics
+#___________________________________________________________________________________________________________________
+#                                                     Last name
 
-# Získání správného jména ze slovníku, přičemž se zachovají původní diakritiky, pokud jsou přítomny
-def get_correct_name(name):
-    name_no_diacritics = remove_diacritics(name).lower()
-    return dictionary_no_diacritics.get(name_no_diacritics, name)
+surname_dictionaries = {}
+
+def load_surname_dictionary(letter: str):
+    """
+    Načte (a zcacheuje) příjmení pro dané písmeno (A–Z).
+    Vrací slovník {bez_diakritiky: původní_tvar}.
+    """
+    letter = letter.upper()
+    if letter not in surname_dictionaries:
+        filename = f"surnames{letter}.txt"
+        file_path = os.path.join(dictionaries_dir, filename)
+        if not os.path.exists(file_path):
+            print(f"⚠️ Soubor {filename} neexistuje.")
+            surname_dictionaries[letter] = {}
+        else:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                surnames = set(line.strip() for line in f if line.strip())
+            surname_dictionaries[letter] = {
+                remove_diacritics(s).lower(): s for s in surnames
+            }
+    return surname_dictionaries[letter]
 
 # Extrahování jména z e-mailové adresy a pokus o jeho porovnání s existujícím jménem ve slovníku
-def extract_name_from_email(email):
+def extract_name_from_email(email: str):
+    # Získáme lokální část e-mailu (část před znakem @)
     local_part = email.split('@')[0]
-    # První kontrola: pokud lokální část obsahuje jméno a příjmení oddělené tečkou
-    if '.' in local_part:
-        name_parts = local_part.split('.')
-        if len(name_parts) == 2:
-            # Odstranění diakritiky pro snadnější porovnání
-            first_name = remove_diacritics(name_parts[0]).lower()
-            last_name = remove_diacritics(name_parts[1]).lower()
-            # Kontrola, zda je jméno nebo příjmení přítomno ve slovníku
-            if first_name in dictionary_no_diacritics or (last_name and last_name in dictionary_no_diacritics):
-                correct_first_name = dictionary_no_diacritics.get(first_name, first_name)
-                correct_last_name = dictionary_no_diacritics.get(last_name, last_name)
-                potential_name = f"{correct_first_name} {correct_last_name}"
-                return potential_name
+    # Odstraníme všechny znaky kromě malých písmen, tečky, podtržítka a pomlčky
+    local_part = re.sub(r"[^a-z.\-_]", "", local_part)
+    
+    # Zkusíme rozdělit lokální část pomocí běžných oddělovačů ('.', '_', '-')
+    for divider in ['.', '_', '-']:
+        if divider in local_part:
+            parts = local_part.split(divider, 1)
+            if len(parts) != 2:
+                continue
+            candidate1, candidate2 = parts[0], parts[1]
+            candidate1_clean = remove_diacritics(candidate1).lower()
+            candidate2_clean = remove_diacritics(candidate2).lower()
+            
+            # Varianta: pokud je jedna část pouze jeden znak, předpokládáme, že to je křestní jméno
+            if len(candidate1) == 1:
+                # candidate1 je křestní jméno (iniciala)
+                first_name = candidate1.upper() + "."
+                if candidate2:
+                    first_letter = remove_diacritics(candidate2)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate2_clean in surnames_dict:
+                        surname = surnames_dict[candidate2_clean]
+                    else:
+                        surname = candidate2.title()
+                    return f"{first_name} {surname}"
+            if len(candidate2) == 1:
+                # candidate2 je křestní jméno (iniciala)
+                first_name = candidate2.upper() + "."
+                if candidate1:
+                    first_letter = remove_diacritics(candidate1)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate1_clean in surnames_dict:
+                        surname = surnames_dict[candidate1_clean]
+                    else:
+                        surname = candidate1.title()
+                    return f"{first_name} {surname}"
+            
+            # Standardní varianta A: předpokládáme formát first.last
+            if candidate1_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate1_clean]
+                if candidate2:
+                    first_letter = remove_diacritics(candidate2)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate2_clean in surnames_dict:
+                        correct_surname = surnames_dict[candidate2_clean]
+                        return f"{correct_first} {correct_surname}"
+                    else:
+                        # Pokud je candidate2 také nalezitelná jako křestní jméno, preferujeme variantu A a vrátíme ji v title case
+                        return f"{correct_first} {candidate2.title()}"
+            
+            # Varianta B: předpokládáme formát surname.first (tedy candidate2 je křestní jméno)
+            if candidate2_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate2_clean]
+                if candidate1:
+                    first_letter = remove_diacritics(candidate1)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate1_clean in surnames_dict:
+                        correct_surname = surnames_dict[candidate1_clean]
+                        return f"{correct_first} {correct_surname}"
+                    else:
+                        return f"{correct_first} {candidate1.title()}"
+            
+            # Varianta C: Pokud je rozpoznáno pouze křestní jméno v candidate1, použijeme candidate2 jako příjmení (title case)
+            if candidate1_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate1_clean]
+                return f"{correct_first} {candidate2.title()}"
+            
+            # Varianta D: Pokud je rozpoznáno pouze křestní jméno v candidate2, použijeme candidate1 jako příjmení (title case)
+            if candidate2_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate2_clean]
+                return f"{correct_first} {candidate1.title()}"
+    
+    # Fallback: Pokud nedojde k žádnému rozpoznání, vrátíme celou lokální část převedenou na title case
+    return local_part.title()
 
-    # Druhá kontrola: pokud lokální část obsahuje pouze jedno jméno nebo kombinaci jmen
-    local_part_no_diacritics = remove_diacritics(local_part).lower()
-    if local_part_no_diacritics in dictionary_no_diacritics:
-        correct_name = dictionary_no_diacritics[local_part_no_diacritics]
-        return correct_name
-
-    # Pokud žádná metoda neuspěje, vrátíme None k indikaci, že jméno nebylo nalezeno
-    else:
-        return None
+#___________________________________________________________________________________________________________________
+#                                                 WEBDRIVER SETTINGS
+#___________________________________________________________________________________________________________________
 
 # Seznam HTTP User-Agent záhlaví pro maskování požadavků, aby napodobovaly různé prohlížeče
 headers_list = [
@@ -106,175 +190,233 @@ headers_list = [
     }
 ]
 
-# Funkce pro zobrazení URL stránek, které se scrapují
-def log_scraping_attempt(url):
-    print(f"Scraping: {url}")
+# Nastavení možností prohlížeče
+def initialize_driver():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--disable-web-security")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--log-level=3")
+    
+    # Nastavení náhodného User-Agenta
+    user_agent = random.choice(headers_list)
+    options.add_argument(f"user-agent={user_agent}")
 
-# Extrahuje data jako adresy, telefonní čísla, sportovní kluby, zaměstnání a sociální profily
-def scrape_information_from_url(url, name_to_search):
-    log_scraping_attempt(url)  # Logování URL
+    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+#Funkce pro očištění URL od nežádoucích parametrů
+def clean_url(url):
+    url = re.sub(r"(\?.*|#.*)", "", url)  # Odstraníme query parametry a kotvy
+    return url
+
+#___________________________________________________________________________________________________________________
+#                                                       SCRAPER
+#___________________________________________________________________________________________________________________
+
+# Inicializace klasifikátoru
+
+classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")  # dobrý pro zero-shot klasifikaci
+
+def classify_content(text):
+    """
+    Pomocí zero-shot klasifikace určí kategorii obsahu.
+    Vrací tuple (nejpravděpodobnější kategorie, skóre).
+    """
+    candidate_labels = ["sports", "school", "social media", "other"]
+    result = classifier(text, candidate_labels, multi_label=False)
+    return result["labels"][0], result["scores"][0]
+
+def analyze_page_content(url, driver):
     try:
-        # Odeslání HTTP GET požadavku na poskytnutou URL adresu s náhodným User-Agent záhlavím a nastavením timeoutu
-        response = requests.get(url, headers=random.choice(headers_list), timeout=10)
-        try:
-            soup = BeautifulSoup(response.text, 'html.parser')
-        except Exception:
-            print(f"Error parsing HTML for {url}, falling back to 'html5lib'.")
-            soup = BeautifulSoup(response.text, 'html5lib')
+        print(f"Analyzing: {url}")
+        driver.get(url)
 
-        text = soup.get_text()
-        addresses = set()
-        phone_numbers = set()
-        sports_clubs = set()
-        employment = set()
-        social_profiles = set()
+        # Použití WebDriverWait místo pevného time.sleep
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)  # Krátká pauza
 
-        # Definované klíčové fráze pro sociální profily
-        social_sites = ["linkedin.com", "facebook.com", "twitter.com", "instagram.com", "tiktok.com"]
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        # Přidání vzorů pro analýzu textu
-        for line in text.splitlines():
-            line = line.strip()
-            if name_to_search.lower() in line.lower():
-                if "address" in line.lower():
-                    addresses.add(line)
-                if "phone" in line.lower():
-                    phone_numbers.add(line)
-                if "club" in line.lower():
-                    sports_clubs.add(line)
-                if "job" in line.lower():
-                    employment.add(line)
-            
-            # Hledání odkazů na sociální profily
-            for site in social_sites:
-                if site in line.lower():
-                    social_profiles.add(line)
+        # Extrakce titulu, meta description, nadpisů a odstavců
+        title = soup.title.string if soup.title else ""
+        meta_description = ""
+        meta_tag = soup.find("meta", attrs={"name": "description"})
+        if meta_tag:
+            meta_description = meta_tag.get("content", "")
 
-        return {
-            'addresses': addresses,
-            'phone_numbers': phone_numbers,
-            'sports_clubs': sports_clubs,
-            'employment': employment,
-            'social_profiles': social_profiles
+        headings = " ".join([h.get_text(separator=' ', strip=True) for h in soup.find_all(["h1", "h2", "h3"])])
+        paragraphs = " ".join([p.get_text(separator=' ', strip=True) for p in soup.find_all("p")])
+
+        # Celý text pro kontrolu jména
+        full_text = " ".join([title, meta_description, headings, paragraphs])
+        full_text = " ".join(full_text.split())  # odstraní přebytečné mezery
+        
+        # Pro klasifikaci omezíme text na prvních 300 slov
+        words = full_text.split()[:300]
+        preprocessed_text = " ".join(words)
+        
+        # Použití zero-shot klasifikace na předzpracovaný text
+        candidate_labels = ["sports", "school", "social media", "other"]
+        classifier_result = classifier(preprocessed_text, candidate_labels, multi_label=False)
+        category_ai = classifier_result["labels"][0]
+        score_ai = classifier_result["scores"][0]
+        print(f"Zero-shot classification result: {category_ai} with score {score_ai:.2f}")
+
+        # Heuristická kontrola, pokud AI není dostatečně přesvědčená (score < 0.5)
+        if score_ai < 0.5:
+            # Pokud URL obsahuje známé domény sociálních sítí
+            if any(domain in url for domain in ["facebook.com", "instagram.com", "twitter.com", "youtube.com", "x.com", "tiktok.com", "linkedin.com", "threads.net"]):
+                category_ai = "social media"
+                score_ai = 0.9  # nastavíme vysokou důvěru
+            # Kontrola pro sportovní obsah na základě klíčových slov v textu
+            elif any(keyword in preprocessed_text.lower() for keyword in ["sport", "rowing", "basketball", "football", "tennis", "veslování", "basketbal", "fotbal", "tenis", "házená", "volejbal", "turnaj", "pohár", "mistrovství", "championship", "cup", "tournament"]):
+                category_ai = "sports"
+                score_ai = 0.7
+            # Kontrola pro školní obsah
+            elif any(keyword in preprocessed_text.lower() for keyword in ["university", "school", "college", "gymnázium", "škola", "institut"]):
+                category_ai = "school"
+                score_ai = 0.7
+
+        # Extrakce odkazů na sociální sítě (ponecháváme původní logiku)
+        social_media_links = []
+        for link in soup.find_all('a', href=True):
+            href = link['href']
+            if any(site in href for site in ["facebook.com", "instagram.com", "twitter.com", "x.com", "tiktok.com", "youtube.com", "linkedin.com", "threads.net"]):
+                social_media_links.append(href)
+        
+        results = {
+            "title": title,
+            "description": meta_description,
+            "full_text": full_text,           # Uložíme si i celý text
+            "preprocessed_text": preprocessed_text,
+            "category": category_ai,
+            "score": score_ai,
+            "social_media_links": social_media_links
         }
-    except requests.exceptions.RequestException as e:
-        print(f'Error accessing {url}: {e}')
-        return {
-            'addresses': set(),
-            'phone_numbers': set(),
-            'sports_clubs': set(),
-            'employment': set(),
-            'social_profiles': set()
-        }
+        return results
 
-# Vyhledání informací na Googlu spojených s daným dotazem
-def search_google(query):
-    try:
-        search_results = search(query, num_results=10)
-        return list(search_results)
     except Exception as e:
-        print(f'Error during Google search: {e}')
+        print(f"❌Error analyzing {url}: {e}")
+        return {}
+#___________________________________________________________________________________________________________________
+#                                                      SEARCH
+#___________________________________________________________________________________________________________________
+
+# Vyhledání informací na DuckDuckGo
+def search_duckduckgo(query):
+    try:
+        with DDGS() as ddgs:
+            # Použijeme set comprehension, který zajistí, že každý odkaz (r['href']) bude jedinečný
+            results = {r['href'] for r in ddgs.text(query, max_results=10)}
+        # Vrátíme výsledky jako list (pokud potřebujeme pracovat s indexací nebo iterací v konkrétním pořadí)
+        return list(results)
+    except Exception as e:
+        print(f'Error during DuckDuckGo search: {e}')
         return []
 
 # Vytvoření variant jmen pro vyhledávání
 def generate_name_variants(extracted_name):
     """
     Vytvoří různé kombinace jména a příjmení pro vyhledávání.
-
-    :param extracted_name: Jméno ve formátu "Jméno Příjmení".
-    :return: Seznam variant jména pro vyhledávání.
+    Kromě toho přidává variantu s uvozovkami, abychom dosáhli přesnějších výsledků.
     """
     if not extracted_name or len(extracted_name.split()) != 2:
         return []
 
+    # Přidáme "exact match" variantu s uvozovkami (s diakritikou)
+    variants = [f'"{extracted_name}"']
+
     first_name, last_name = extracted_name.split()
 
-    # Odstranění mezer a diakritiky pro variace
-    first_name = remove_diacritics(first_name).lower()
-    last_name = remove_diacritics(last_name).lower()
+    # Odstranění mezer a diakritiky pro další variace
+    first_name_clean = remove_diacritics(first_name).lower()
+    last_name_clean = remove_diacritics(last_name).lower()
 
-    variants = [
-        f"{first_name}{last_name}",
-        f"{first_name}.{last_name}",
-        f"{first_name}_{last_name}",
-        f"{last_name}{first_name}",
-        f"{last_name}.{first_name}",
-        f"{last_name}_{first_name}"
-    ]
-
+    variants.extend([
+        f"{first_name_clean}{last_name_clean}",
+        f"{first_name_clean}.{last_name_clean}",
+        f"{first_name_clean}_{last_name_clean}",
+        f"{last_name_clean}{first_name_clean}",
+        f"{last_name_clean}.{first_name_clean}",
+        f"{last_name_clean}_{first_name_clean}"
+    ])
     return variants
 
-if __name__ == "__main__":
-    email_query = input("Zadejte e-mail nebo klíčové slovo pro hledání: ")
-    extracted_name = extract_name_from_email(email_query)
-    print(f'Lokální část e-mailu: {email_query.split("@")[0]}')  # Debug výpis lokální části e-mailu
-    if extracted_name:
-        print(f'Extrahované jméno z e-mailu: {extracted_name}')
-    else:
-        print('Jméno nebylo extrahováno z e-mailu.')
-    # Analýza jména na základě slovníku
-    if extracted_name:
-        if is_name_in_dictionary(extracted_name.split()[0]):
-            print(f'Jméno "{extracted_name.split()[0]}" bylo nalezeno ve slovníku.')
-        else:
-            print(f'Jméno "{extracted_name.split()[0]}" nebylo nalezeno ve slovníku.')
-    if extracted_name:
-        name_variants = generate_name_variants(extracted_name)
+#___________________________________________________________________________________________________________________
+#                                                   NAME CONTROL
+#___________________________________________________________________________________________________________________
+
+def contains_name(page_text, extracted_name):
+    """
+    Ověří, zda se v textu stránky skutečně vyskytuje cílové jméno
+    (ať už s diakritikou, nebo bez ní).
+    """
+    extracted_clean = remove_diacritics(extracted_name).lower()
+    page_clean = remove_diacritics(page_text).lower()
+    return extracted_clean in page_clean
+
+#___________________________________________________________________________________________________________________
+#                                                       MAIN
+#___________________________________________________________________________________________________________________
+def main():
+    email_query = input("Zadejte e-mail: ")
+    extracted = extract_name_from_email(email_query)
+    if extracted:
+        print(f"Extrahované jméno a příjmení: {extracted}")
+        name_variants = generate_name_variants(extracted)
         print("Vygenerované varianty jména:")
         for variant in name_variants:
             print(variant)
-            query_name = variant
-        print(f'Vyhledávám informace pro extrahované jméno: {extracted_name}')
+        query_name = extracted
+        print(f'Vyhledávám informace pro extrahované jméno: {extracted}')
     else:
+        print("Nepodařilo se extrahovat jméno a příjmení.")
+        name_variants = []
         query_name = email_query
-        print(f'Vyhledávám informace pro e-mail: {query_name}')
 
-    # Vyhledávání informací o osobě spjaté s tímto e-mailem
-    search_results = []
-    if extracted_name:
+    # Vyhledávání informací pomocí DuckDuckGo
+    search_results_set = set()
+    if extracted:
         for variant in name_variants:
-            search_results.extend(search_google(variant))
+            # Každý variant vrátí list výsledků
+            results_for_variant = search_duckduckgo(variant)
+            search_results_set.update(results_for_variant)
     else:
-        search_results = search_google(query_name)
+        search_results_set.update(search_duckduckgo(query_name))
+    search_results = list(search_results_set)
+    
+    print("DuckDuckGo Results:", search_results) # Debug info
 
     if not search_results:
         print('No search results found')
     else:
-        all_addresses = set()
-        all_phone_numbers = set()
-        all_sports_clubs = set()
-        all_employment = set()
-        all_social_profiles = set()
+        results = {}
+        driver = initialize_driver()
+        for url in search_results:
+            result = analyze_page_content(url, driver)
+            # Dodatečný filtr – pokud se v textu stránky nenachází jméno, vyřadíme ji
+            if not contains_name(result.get("full_text", ""), extracted):
+                print(f"Stránka {url} neobsahuje jméno '{extracted}', vyřazuji.")
+                continue
+            # Pokud stránka prošla filtrem, uložíme výsledek
+            results[url] = result
 
-        for link in search_results:
-            info = scrape_information_from_url(link, query_name)
-            all_addresses.update(info['addresses'])
-            all_phone_numbers.update(info['phone_numbers'])
-            all_sports_clubs.update(info['sports_clubs'])
-            all_employment.update(info['employment'])
-            all_social_profiles.update(info['social_profiles'])
+        driver.quit()
 
-        # Výpis nalezených informací
-        print('Nalezené informace:')
-        if all_addresses:
-            print('Adresy:')
-            for address in all_addresses:
-                print(address)
-        if all_phone_numbers:
-            print('Telefonní čísla:')
-            for number in all_phone_numbers:
-                print(number)
-        if all_sports_clubs:
-            print('Sportovní kluby:')
-            for club in all_sports_clubs:
-                print(club)
-        if all_employment:
-            print('Zaměstnání:')
-            for job in all_employment:
-                print(job)
-        if all_social_profiles:
-            print('Sociální profily:')
-            for profile in all_social_profiles:
-                print(profile)
-        if not (all_addresses or all_phone_numbers or all_sports_clubs or all_employment or all_social_profiles):
-            print('Žádné informace nebyly nalezeny.')
+        # Výpis výsledků
+        for url, data in results.items():
+            print(f"\nResults for {url}")
+            print(f"Title: {data.get('title')}")
+            print(f"Description: {data.get('description')}")
+            print(f"Keyword Count: {data.get('keyword_count')}")
+            print(f"Social Media Links: {data.get('social_media_links')}")
+            print(f"Structure Info: {data.get('structure_info')}")
+            print(f"Sports Events: {data.get('sports_events')}")
+
+if __name__ == "__main__":
+    main()
