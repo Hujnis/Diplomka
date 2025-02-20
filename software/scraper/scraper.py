@@ -73,24 +73,79 @@ def load_surname_dictionary(letter: str):
             }
     return surname_dictionaries[letter]
 
+#___________________________________________________________________________________________________________________
+#                                          EMAIL SPLIT, DOMAIN ANALYSIS
+#___________________________________________________________________________________________________________________
+def split_email(email: str):
+    """
+    Rozdělí e-mail na local_part a domain_part.
+    Pokud e-mail obsahuje '@', vrátí (local_part, domain_part) - domain_part zůstane v původním tvaru.
+    """
+    parts = email.split('@', 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    else:
+        return parts[0], ""
+    
+#___________________________________________________________________________________________________________________
+#                                         EXTRACT NAME FROM LOCAL_PART
+#___________________________________________________________________________________________________________________
+
 # Extrahování jména z e-mailové adresy a pokus o jeho porovnání s existujícím jménem ve slovníku
 def extract_name_from_email(email: str):
     # Získáme lokální část e-mailu (část před znakem @)
     local_part = email.split('@')[0]
     # Odstraníme všechny znaky kromě malých písmen, tečky, podtržítka a pomlčky
     local_part = re.sub(r"[^a-z.\-_]", "", local_part)
-    
-    # Zkusíme rozdělit lokální část pomocí běžných oddělovačů ('.', '_', '-')
+
+    dividers_found = False
+
+    # 1) Zkusíme rozdělit lokální část pomocí běžných oddělovačů ('.', '_', '-')
     for divider in ['.', '_', '-']:
         if divider in local_part:
+            dividers_found = True
             parts = local_part.split(divider, 1)
             if len(parts) != 2:
                 continue
             candidate1, candidate2 = parts[0], parts[1]
             candidate1_clean = remove_diacritics(candidate1).lower()
             candidate2_clean = remove_diacritics(candidate2).lower()
-            
-            # Varianta: pokud je jedna část pouze jeden znak, předpokládáme, že to je křestní jméno
+
+            # Varianta A: předpokládáme formát first.last
+            if candidate1_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate1_clean]
+                if candidate2:
+                    first_letter = remove_diacritics(candidate2)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate2_clean in surnames_dict:
+                        correct_surname = surnames_dict[candidate2_clean]
+                        return f"{correct_first} {correct_surname}"
+                    else:
+                        return f"{correct_first} {candidate2.title()}"
+
+            # Varianta B: předpokládáme formát surname.first
+            if candidate2_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate2_clean]
+                if candidate1:
+                    first_letter = remove_diacritics(candidate1)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
+                    if candidate1_clean in surnames_dict:
+                        correct_surname = surnames_dict[candidate1_clean]
+                        return f"{correct_first} {correct_surname}"
+                    else:
+                        return f"{correct_first} {candidate1.title()}"
+
+            # Varianta C: Pokud je rozpoznáno pouze křestní jméno v candidate1
+            if candidate1_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate1_clean]
+                return f"{correct_first} {candidate2.title()}"
+
+            # Varianta D: Pokud je rozpoznáno pouze křestní jméno v candidate2
+            if candidate2_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[candidate2_clean]
+                return f"{correct_first} {candidate1.title()}"
+
+            # Teprve poté zkusíme jednopísmennou iniciálu
             if len(candidate1) == 1:
                 # candidate1 je křestní jméno (iniciala)
                 first_name = candidate1.upper() + "."
@@ -102,6 +157,7 @@ def extract_name_from_email(email: str):
                     else:
                         surname = candidate2.title()
                     return f"{first_name} {surname}"
+
             if len(candidate2) == 1:
                 # candidate2 je křestní jméno (iniciala)
                 first_name = candidate2.upper() + "."
@@ -113,43 +169,82 @@ def extract_name_from_email(email: str):
                     else:
                         surname = candidate1.title()
                     return f"{first_name} {surname}"
-            
-            # Standardní varianta A: předpokládáme formát first.last
-            if candidate1_clean in name_no_diacritics:
-                correct_first = name_no_diacritics[candidate1_clean]
-                if candidate2:
-                    first_letter = remove_diacritics(candidate2)[0].upper()
-                    surnames_dict = load_surname_dictionary(first_letter)
-                    if candidate2_clean in surnames_dict:
-                        correct_surname = surnames_dict[candidate2_clean]
+
+    # 2) Pokud jsme nenašli žádný oddělovač, zkusíme heuristiku
+    if not dividers_found:
+        local_clean = remove_diacritics(local_part).lower()
+
+        # a) Nejdřív zkusíme celé jméno najít ve slovníku křestních jmen
+        if local_clean in name_no_diacritics:
+            # Pokud je celé local_part validní křestní jméno, nemáme příjmení
+            return name_no_diacritics[local_clean]
+
+        # b) Projdeme všechny možné dělicí body a hledáme křestní jméno a příjmení
+        for i in range(1, len(local_clean)):
+            first_candidate_clean = local_clean[:i]
+            second_candidate_clean = local_clean[i:]
+            first_candidate_orig = local_part[:i]
+            second_candidate_orig = local_part[i:]
+
+            # Pokud je první část validní křestní jméno
+            if first_candidate_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[first_candidate_clean]
+                # Zkusíme druhou část ve slovníku příjmení
+                if second_candidate_orig:
+                    first_letter_surname = remove_diacritics(second_candidate_orig)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter_surname)
+                    if second_candidate_clean in surnames_dict:
+                        correct_surname = surnames_dict[second_candidate_clean]
                         return f"{correct_first} {correct_surname}"
                     else:
-                        # Pokud je candidate2 také nalezitelná jako křestní jméno, preferujeme variantu A a vrátíme ji v title case
-                        return f"{correct_first} {candidate2.title()}"
-            
-            # Varianta B: předpokládáme formát surname.first (tedy candidate2 je křestní jméno)
-            if candidate2_clean in name_no_diacritics:
-                correct_first = name_no_diacritics[candidate2_clean]
-                if candidate1:
-                    first_letter = remove_diacritics(candidate1)[0].upper()
-                    surnames_dict = load_surname_dictionary(first_letter)
-                    if candidate1_clean in surnames_dict:
-                        correct_surname = surnames_dict[candidate1_clean]
+                        return f"{correct_first} {second_candidate_orig.title()}"
+
+            # Nebo pokud je druhá část validní křestní jméno (opačný formát)
+            if second_candidate_clean in name_no_diacritics:
+                correct_first = name_no_diacritics[second_candidate_clean]
+                # Zkusíme první část ve slovníku příjmení
+                if first_candidate_orig:
+                    first_letter_surname = remove_diacritics(first_candidate_orig)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter_surname)
+                    if first_candidate_clean in surnames_dict:
+                        correct_surname = surnames_dict[first_candidate_clean]
                         return f"{correct_first} {correct_surname}"
                     else:
-                        return f"{correct_first} {candidate1.title()}"
-            
-            # Varianta C: Pokud je rozpoznáno pouze křestní jméno v candidate1, použijeme candidate2 jako příjmení (title case)
-            if candidate1_clean in name_no_diacritics:
-                correct_first = name_no_diacritics[candidate1_clean]
-                return f"{correct_first} {candidate2.title()}"
-            
-            # Varianta D: Pokud je rozpoznáno pouze křestní jméno v candidate2, použijeme candidate1 jako příjmení (title case)
-            if candidate2_clean in name_no_diacritics:
-                correct_first = name_no_diacritics[candidate2_clean]
-                return f"{correct_first} {candidate1.title()}"
-    
-    # Fallback: Pokud nedojde k žádnému rozpoznání, vrátíme celou lokální část převedenou na title case
+                        return f"{correct_first} {first_candidate_orig.title()}"
+
+        # c) Pokud nic z výše uvedeného nevyšlo, zkusíme odebrat poslední/ první znak
+        #    a ověřit, zda takto zkrácený řetězec není ve slovníku příjmení či jmen
+        if len(local_part) > 1:
+            # Odebrání posledního znaku
+            without_last = local_part[:-1]
+            without_last_clean = remove_diacritics(without_last).lower()
+            last_char = local_part[-1]
+
+            # Zkusíme, jestli zkrácený řetězec je příjmení
+            first_letter_surname = remove_diacritics(without_last)[0].upper()
+            surnames_dict = load_surname_dictionary(first_letter_surname)
+            if without_last_clean in surnames_dict:
+                # Nalezeno jako příjmení
+                return f"{last_char.upper()}. {surnames_dict[without_last_clean]}"
+
+            # Zkusíme, jestli zkrácený řetězec je křestní jméno
+            if without_last_clean in name_no_diacritics:
+                return f"{name_no_diacritics[without_last_clean]} {last_char.upper()}."
+
+            # Odebrání prvního znaku
+            without_first = local_part[1:]
+            without_first_clean = remove_diacritics(without_first).lower()
+            first_char = local_part[0]
+
+            first_letter_surname = remove_diacritics(without_first)[0].upper() if len(without_first) > 0 else ""
+            surnames_dict = load_surname_dictionary(first_letter_surname) if first_letter_surname else {}
+            if without_first_clean in surnames_dict:
+                return f"{first_char.upper()}. {surnames_dict[without_first_clean]}"
+
+            if without_first_clean in name_no_diacritics:
+                return f"{name_no_diacritics[without_first_clean]} {first_char.upper()}."
+
+    # 3) Fallback: Pokud nic nevyšlo, vrátíme local_part.title()
     return local_part.title()
 
 #___________________________________________________________________________________________________________________
@@ -214,11 +309,10 @@ def clean_url(url):
     return url
 
 #___________________________________________________________________________________________________________________
-#                                                       SCRAPER
+#                                                     SCRAPER
 #___________________________________________________________________________________________________________________
 
 # Inicializace klasifikátoru
-
 classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")  # dobrý pro zero-shot klasifikaci
 
 def classify_content(text):
@@ -260,7 +354,7 @@ def analyze_page_content(url, driver):
         words = full_text.split()[:300]
         preprocessed_text = " ".join(words)
         
-        # Použití zero-shot klasifikace na předzpracovaný text
+        # Zero-shot klasifikace na předzpracovaný text
         candidate_labels = ["sports", "school", "social media", "other"]
         classifier_result = classifier(preprocessed_text, candidate_labels, multi_label=False)
         category_ai = classifier_result["labels"][0]
@@ -365,58 +459,75 @@ def contains_name(page_text, extracted_name):
 #___________________________________________________________________________________________________________________
 def main():
     email_query = input("Zadejte e-mail: ")
+    local_part, domain_part = split_email(email_query)
     extracted = extract_name_from_email(email_query)
+    print(f"Local part: {local_part}")
+    print(f"Domain part: {domain_part}")
+
+
     if extracted:
         print(f"Extrahované jméno a příjmení: {extracted}")
-        name_variants = generate_name_variants(extracted)
-        print("Vygenerované varianty jména:")
-        for variant in name_variants:
-            print(variant)
-        query_name = extracted
-        print(f'Vyhledávám informace pro extrahované jméno: {extracted}')
     else:
         print("Nepodařilo se extrahovat jméno a příjmení.")
-        name_variants = []
-        query_name = email_query
 
-    # Vyhledávání informací pomocí DuckDuckGo
-    search_results_set = set()
+
+     # Sestavení vyhledávacích dotazů
+    search_queries = []
     if extracted:
+        # 1) Přesná shoda s uvozovkami + doména
+        search_queries.append(f'"{extracted}" {domain_part}')
+        
+        # 2) Přesná shoda jména bez domény
+        search_queries.append(f'"{extracted}"')
+        
+        # 3) Generované varianty jména
+        name_variants = generate_name_variants(extracted)
         for variant in name_variants:
-            # Každý variant vrátí list výsledků
-            results_for_variant = search_duckduckgo(variant)
-            search_results_set.update(results_for_variant)
-    else:
-        search_results_set.update(search_duckduckgo(query_name))
-    search_results = list(search_results_set)
-    
-    print("DuckDuckGo Results:", search_results) # Debug info
+            # Varianta bez domény
+            search_queries.append(variant)
+            # Varianta s doménou
+            search_queries.append(f"{variant} {domain_part}")
 
-    if not search_results:
+        # 4) Samostatná doména (pokus o nalezení firmy)
+        if domain_part:
+            search_queries.append(domain_part)
+
+    else:
+        # Pokud se jméno nepodařilo extrahovat, vyhledáme aspoň e-mail nebo doménu
+        search_queries.append(email_query)
+        if domain_part:
+            search_queries.append(domain_part)
+
+    print("Search queries:", search_queries)
+
+    # Vyhledání informací pomocí DuckDuckGo
+    all_urls = set()
+    for q in search_queries:
+        results = search_duckduckgo(q)
+        all_urls.update(results)
+
+    print("DuckDuckGo Results:", all_urls)
+    
+    if not all_urls:
         print('No search results found')
     else:
         results = {}
         driver = initialize_driver()
-        for url in search_results:
+        for url in all_urls:
             result = analyze_page_content(url, driver)
-            # Dodatečný filtr – pokud se v textu stránky nenachází jméno, vyřadíme ji
-            if not contains_name(result.get("full_text", ""), extracted):
-                print(f"Stránka {url} neobsahuje jméno '{extracted}', vyřazuji.")
+            # Dodatečná kontrola, zda stránka obsahuje hledané jméno
+            if not (extracted and (remove_diacritics(extracted).lower() in remove_diacritics(result.get("full_text", "")).lower())):
+                print(f"Stránka {url} neobsahuje hledané jméno, vyřazuji.")
                 continue
-            # Pokud stránka prošla filtrem, uložíme výsledek
             results[url] = result
-
         driver.quit()
-
-        # Výpis výsledků
         for url, data in results.items():
             print(f"\nResults for {url}")
             print(f"Title: {data.get('title')}")
             print(f"Description: {data.get('description')}")
-            print(f"Keyword Count: {data.get('keyword_count')}")
+            print(f"Category: {data.get('category')}, Score: {data.get('score')}")
             print(f"Social Media Links: {data.get('social_media_links')}")
-            print(f"Structure Info: {data.get('structure_info')}")
-            print(f"Sports Events: {data.get('sports_events')}")
 
 if __name__ == "__main__":
     main()
+
