@@ -87,6 +87,27 @@ def split_email(email: str):
     else:
         return parts[0], ""
     
+
+# Seznam free e-mailových poskytovatelů
+free_email_providers = {
+    "seznam.cz", "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "centrum.cz", "email.cz"
+}
+
+def analyze_domain(domain: str):
+    """
+    Analyzuje doménovou část e-mailu a určuje, zda se jedná o free e-mail.
+    Vrací slovník:
+      {
+         "is_free": bool,         # True, pokud je doména free
+         "domain": str            # Původní doména (např. firma.cz)
+      }
+    """
+    domain = domain.lower().strip()
+    result = {"is_free": False, "domain": domain}
+    if domain in free_email_providers:
+        result["is_free"] = True
+    return result
+    
 #___________________________________________________________________________________________________________________
 #                                         EXTRACT NAME FROM LOCAL_PART
 #___________________________________________________________________________________________________________________
@@ -170,17 +191,15 @@ def extract_name_from_email(email: str):
                         surname = candidate1.title()
                     return f"{first_name} {surname}"
 
-    # 2) Pokud jsme nenašli žádný oddělovač, zkusíme heuristiku
+    # 2) Nebyly nalezeny rozdělovače
     if not dividers_found:
         local_clean = remove_diacritics(local_part).lower()
-
-        # a) Nejdřív zkusíme celé jméno najít ve slovníku křestních jmen
+        # Nejprve zkusíme, zda celé local_part odpovídá křestnímu jménu
         if local_clean in name_no_diacritics:
-            # Pokud je celé local_part validní křestní jméno, nemáme příjmení
             return name_no_diacritics[local_clean]
 
-        # b) Projdeme všechny možné dělicí body a hledáme křestní jméno a příjmení
-        for i in range(1, len(local_clean)):
+        # Procházíme indexy pozpátku, abychom preferovali delší shody
+        for i in reversed(range(1, len(local_clean))):
             first_candidate_clean = local_clean[:i]
             second_candidate_clean = local_clean[i:]
             first_candidate_orig = local_part[:i]
@@ -191,29 +210,29 @@ def extract_name_from_email(email: str):
                 correct_first = name_no_diacritics[first_candidate_clean]
                 # Zkusíme druhou část ve slovníku příjmení
                 if second_candidate_orig:
-                    first_letter_surname = remove_diacritics(second_candidate_orig)[0].upper()
-                    surnames_dict = load_surname_dictionary(first_letter_surname)
+                    first_letter = remove_diacritics(second_candidate_orig)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
                     if second_candidate_clean in surnames_dict:
                         correct_surname = surnames_dict[second_candidate_clean]
                         return f"{correct_first} {correct_surname}"
                     else:
                         return f"{correct_first} {second_candidate_orig.title()}"
 
-            # Nebo pokud je druhá část validní křestní jméno (opačný formát)
+            # Nebo pokud je druhá část validní křestní jméno
             if second_candidate_clean in name_no_diacritics:
                 correct_first = name_no_diacritics[second_candidate_clean]
                 # Zkusíme první část ve slovníku příjmení
                 if first_candidate_orig:
-                    first_letter_surname = remove_diacritics(first_candidate_orig)[0].upper()
-                    surnames_dict = load_surname_dictionary(first_letter_surname)
+                    first_letter = remove_diacritics(first_candidate_orig)[0].upper()
+                    surnames_dict = load_surname_dictionary(first_letter)
                     if first_candidate_clean in surnames_dict:
                         correct_surname = surnames_dict[first_candidate_clean]
                         return f"{correct_first} {correct_surname}"
                     else:
                         return f"{correct_first} {first_candidate_orig.title()}"
 
-        # c) Pokud nic z výše uvedeného nevyšlo, zkusíme odebrat poslední/ první znak
-        #    a ověřit, zda takto zkrácený řetězec není ve slovníku příjmení či jmen
+        # Pokud nic z výše uvedeného nevyšlo, zkusíme odebrat poslední/první znak a ověřit, zda takto zkrácený
+        # řetězec není ve slovníku příjmení či jmen
         if len(local_part) > 1:
             # Odebrání posledního znaku
             without_last = local_part[:-1]
@@ -236,7 +255,7 @@ def extract_name_from_email(email: str):
             without_first_clean = remove_diacritics(without_first).lower()
             first_char = local_part[0]
 
-            first_letter_surname = remove_diacritics(without_first)[0].upper() if len(without_first) > 0 else ""
+            first_letter_surname = remove_diacritics(without_first)[0].upper() if without_first else ""
             surnames_dict = load_surname_dictionary(first_letter_surname) if first_letter_surname else {}
             if without_first_clean in surnames_dict:
                 return f"{first_char.upper()}. {surnames_dict[without_first_clean]}"
@@ -246,6 +265,7 @@ def extract_name_from_email(email: str):
 
     # 3) Fallback: Pokud nic nevyšlo, vrátíme local_part.title()
     return local_part.title()
+
 
 #___________________________________________________________________________________________________________________
 #                                                 WEBDRIVER SETTINGS
@@ -364,16 +384,16 @@ def analyze_page_content(url, driver):
         # Heuristická kontrola, pokud AI není dostatečně přesvědčená (score < 0.5)
         if score_ai < 0.5:
             # Pokud URL obsahuje známé domény sociálních sítí
-            if any(domain in url for domain in ["facebook.com", "instagram.com", "twitter.com", "youtube.com", "x.com", "tiktok.com", "linkedin.com", "threads.net"]):
+            if any(domain in url for domain in [...]):
                 category_ai = "social media"
-                score_ai = 0.9  # nastavíme vysokou důvěru
+                score_ai = 0.9
+            # Kontrola pro školní obsah
+            elif any(keyword in preprocessed_text.lower() for keyword in ["university", "school", "college", "gymnázium", "škola", "institut", "univerzita", "student", "absolvent", "fakulta", "faculty", "studium"]):
+                category_ai = "school"
+                score_ai = 0.7
             # Kontrola pro sportovní obsah na základě klíčových slov v textu
             elif any(keyword in preprocessed_text.lower() for keyword in ["sport", "rowing", "basketball", "football", "tennis", "veslování", "basketbal", "fotbal", "tenis", "házená", "volejbal", "turnaj", "pohár", "mistrovství", "championship", "cup", "tournament"]):
                 category_ai = "sports"
-                score_ai = 0.7
-            # Kontrola pro školní obsah
-            elif any(keyword in preprocessed_text.lower() for keyword in ["university", "school", "college", "gymnázium", "škola", "institut"]):
-                category_ai = "school"
                 score_ai = 0.7
 
         # Extrakce odkazů na sociální sítě (ponecháváme původní logiku)
@@ -460,73 +480,91 @@ def contains_name(page_text, extracted_name):
 def main():
     email_query = input("Zadejte e-mail: ")
     local_part, domain_part = split_email(email_query)
+    domain_info = analyze_domain(domain_part)
     extracted = extract_name_from_email(email_query)
+
     print(f"Local part: {local_part}")
     print(f"Domain part: {domain_part}")
-
+    print(f"Domain info: {domain_info}")
 
     if extracted:
         print(f"Extrahované jméno a příjmení: {extracted}")
     else:
         print("Nepodařilo se extrahovat jméno a příjmení.")
 
-
-     # Sestavení vyhledávacích dotazů
+    # Sestavení vyhledávacích dotazů: nyní ukládáme tuple (dotaz, check_name)
     search_queries = []
+    
     if extracted:
-        # 1) Přesná shoda s uvozovkami + doména
-        search_queries.append(f'"{extracted}" {domain_part}')
+        # 1) Přesná shoda s uvozovkami + doména (firemní e-mail)
+        if not domain_info["is_free"]:
+            # U dotazu s doménou kontrolujeme jméno (protože obsahuje i jméno)
+            search_queries.append((f'"{extracted}" {domain_part}', True))
         
         # 2) Přesná shoda jména bez domény
-        search_queries.append(f'"{extracted}"')
+        search_queries.append((f'"{extracted}"', True))
         
-        # 3) Generované varianty jména
+        # 3) Generované varianty jména s a bez domény
         name_variants = generate_name_variants(extracted)
         for variant in name_variants:
             # Varianta bez domény
-            search_queries.append(variant)
-            # Varianta s doménou
-            search_queries.append(f"{variant} {domain_part}")
-
-        # 4) Samostatná doména (pokus o nalezení firmy)
-        if domain_part:
-            search_queries.append(domain_part)
-
+            search_queries.append((variant, True))
+            # Varianta s doménou (firemní)
+            if not domain_info["is_free"]:
+                search_queries.append((f"{variant} {domain_part}", True))
+        
+        # 4) Samostatné vyhledání domény (pokus o nalezení firmy) – zde NEkontrolujeme jméno
+        if domain_part and not domain_info["is_free"]:
+            search_queries.append((domain_part, False))
+    
     else:
         # Pokud se jméno nepodařilo extrahovat, vyhledáme aspoň e-mail nebo doménu
-        search_queries.append(email_query)
+        search_queries.append((email_query, False))
         if domain_part:
-            search_queries.append(domain_part)
-
+            search_queries.append((domain_part, False))
+    
     print("Search queries:", search_queries)
 
-    # Vyhledání informací pomocí DuckDuckGo
-    all_urls = set()
-    for q in search_queries:
+    # Vyhledání informací pomocí DuckDuckGo a uložení s příznakem check_name
+    all_urls = {}
+    for (q, check_name) in search_queries:
         results = search_duckduckgo(q)
-        all_urls.update(results)
+        for url in results:
+            if url in all_urls:
+                # Pokud se URL již vyskytuje, nová hodnota bude logický součin (pokud jeden dotaz nevyžaduje kontrolu, nastavíme False)
+                all_urls[url] = all_urls[url] and check_name
+            else:
+                all_urls[url] = check_name
 
-    print("DuckDuckGo Results:", all_urls)
-    
+    print("DuckDuckGo Results:", list(all_urls.keys()))
+
+
+    # Nyní zpracujeme každé URL s ohledem na check_name
     if not all_urls:
         print('No search results found')
     else:
-        results = {}
+        results_data = {}
         driver = initialize_driver()
-        for url in all_urls:
+        for url, check in all_urls.items():
             result = analyze_page_content(url, driver)
-            # Dodatečná kontrola, zda stránka obsahuje hledané jméno
-            if not (extracted and (remove_diacritics(extracted).lower() in remove_diacritics(result.get("full_text", "")).lower())):
-                print(f"Stránka {url} neobsahuje hledané jméno, vyřazuji.")
-                continue
-            results[url] = result
+            # Pokud check_name je True, provádíme kontrolu, zda stránka obsahuje hledané jméno
+            if check and extracted:
+                text_clean = remove_diacritics(result.get("full_text", "")).lower()
+                name_clean = remove_diacritics(extracted).lower()
+                if name_clean not in text_clean:
+                    print(f"Stránka {url} neobsahuje hledané jméno '{extracted}', vyřazuji.")
+                    continue
+            results_data[url] = result
         driver.quit()
-        for url, data in results.items():
+
+        for url, data in results_data.items():
             print(f"\nResults for {url}")
             print(f"Title: {data.get('title')}")
             print(f"Description: {data.get('description')}")
             print(f"Category: {data.get('category')}, Score: {data.get('score')}")
             print(f"Social Media Links: {data.get('social_media_links')}")
+
+
 
 if __name__ == "__main__":
     main()
