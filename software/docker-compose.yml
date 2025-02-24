@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:latest
-    container_name: diplomka_postgres
+    container_name: postgres
     restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -19,9 +19,12 @@ services:
     networks:
       - software_network
 
+  #________________________________________________________________________
+  #                                WEB_API
+  #________________________________________________________________________
   web:
     build: .
-    container_name: flask_app
+    container_name: flask_web_api
     restart: always
     depends_on:
       postgres:
@@ -37,6 +40,27 @@ services:
     networks:
       - software_network
 
+  #________________________________________________________________________
+  #                                SCRAPER
+  #________________________________________________________________________
+  scraper:
+    build: .
+    container_name: scraper
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+    volumes:
+      - .:/app
+    working_dir: /app/scraper
+    command: ["python", "scraper.py"]
+    networks:
+      - software_network
+
+  #________________________________________________________________________
+  #                                PGADMIN
+  #________________________________________________________________________
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -52,6 +76,7 @@ services:
       - pgadmin_data:/var/lib/pgadmin
     networks:
       - software_network
+
 
 volumes:
   pg_data:

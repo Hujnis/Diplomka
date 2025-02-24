@@ -5,14 +5,14 @@ import re
 import time
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 from transformers import pipeline
+from dotenv import load_dotenv
+from database import get_db_connection, upsert_user
 
 #___________________________________________________________________________________________________________________
 #                                                     DICTIONARY
@@ -109,7 +109,7 @@ def analyze_domain(domain: str):
     return result
     
 #___________________________________________________________________________________________________________________
-#                                         EXTRACT NAME FROM LOCAL_PART
+#                                            EXTRACT NAME FROM LOCAL_PART
 #___________________________________________________________________________________________________________________
 
 # Extrahování jména z e-mailové adresy a pokus o jeho porovnání s existujícím jménem ve slovníku
@@ -307,7 +307,9 @@ headers_list = [
 
 # Nastavení možností prohlížeče
 def initialize_driver():
-    options = Options()
+    service = Service("/usr/bin/chromedriver")
+    options = webdriver.ChromeOptions()
+    options.binary_location = "/usr/bin/chromium"
     options.add_argument("--headless")
     options.add_argument("--disable-gpu")
     options.add_argument("--no-sandbox")
@@ -321,7 +323,8 @@ def initialize_driver():
     user_agent = random.choice(headers_list)
     options.add_argument(f"user-agent={user_agent}")
 
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    driver = webdriver.Chrome(service=service, options=options)
+    return driver
 
 #Funkce pro očištění URL od nežádoucích parametrů
 def clean_url(url):
@@ -417,6 +420,7 @@ def analyze_page_content(url, driver):
     except Exception as e:
         print(f"❌Error analyzing {url}: {e}")
         return {}
+    
 #___________________________________________________________________________________________________________________
 #                                                      SEARCH
 #___________________________________________________________________________________________________________________
@@ -424,6 +428,7 @@ def analyze_page_content(url, driver):
 # Vyhledání informací na DuckDuckGo
 def search_duckduckgo(query):
     try:
+        time.sleep(random.uniform(3, 8))  # Náhodná pauza mezi 3–8 sekundami
         with DDGS() as ddgs:
             # Použijeme set comprehension, který zajistí, že každý odkaz (r['href']) bude jedinečný
             results = {r['href'] for r in ddgs.text(query, max_results=10)}
@@ -475,97 +480,150 @@ def contains_name(page_text, extracted_name):
     return extracted_clean in page_clean
 
 #___________________________________________________________________________________________________________________
+#                                                 DATABASE ACCESS
+#___________________________________________________________________________________________________________________
+
+def get_all_users():
+    """
+    Načte všechny záznamy z tabulky user_data.
+    Vrací seznam řádků s hodnotami: email, social_media, school, sports, other.
+    """
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT email, social_media, school, sports, other FROM user_data")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return rows
+        except Exception as e:
+            print(f"Chyba při načítání uživatelů: {e}")
+            return []
+    return []
+
+
+#___________________________________________________________________________________________________________________
 #                                                       MAIN
 #___________________________________________________________________________________________________________________
 def main():
-    email_query = input("Zadejte e-mail: ")
-    local_part, domain_part = split_email(email_query)
-    domain_info = analyze_domain(domain_part)
-    extracted = extract_name_from_email(email_query)
-
-    print(f"Local part: {local_part}")
-    print(f"Domain part: {domain_part}")
-    print(f"Domain info: {domain_info}")
-
-    if extracted:
-        print(f"Extrahované jméno a příjmení: {extracted}")
-    else:
-        print("Nepodařilo se extrahovat jméno a příjmení.")
-
-    # Sestavení vyhledávacích dotazů: nyní ukládáme tuple (dotaz, check_name)
-    search_queries = []
+    # Místo vstupu z klávesnice načteme všechny uživatele z databáze
+    users = get_all_users()
+    if not users:
+        print("V databázi nebyl nalezen žádný záznam.")
+        return
     
-    if extracted:
-        # 1) Přesná shoda s uvozovkami + doména (firemní e-mail)
-        if not domain_info["is_free"]:
-            # U dotazu s doménou kontrolujeme jméno (protože obsahuje i jméno)
-            search_queries.append((f'"{extracted}" {domain_part}', True))
+
+    for user in users:
+        email, social_media, school, sports, other = user
+        # Pokud již má alespoň jeden ze sloupců data ze scraperu, přeskočíme tento email
+        if social_media or school or sports or other:
+            print(f"Email {email} již má data ze scraperu. Přeskakuji.")
+            continue
+
+        local_part, domain_part = split_email(email)
+        domain_info = analyze_domain(domain_part)
+        extracted = extract_name_from_email(email)
         
-        # 2) Přesná shoda jména bez domény
-        search_queries.append((f'"{extracted}"', True))
-        
-        # 3) Generované varianty jména s a bez domény
-        name_variants = generate_name_variants(extracted)
-        for variant in name_variants:
-            # Varianta bez domény
-            search_queries.append((variant, True))
-            # Varianta s doménou (firemní)
+        print(f"\nZpracovávám email: {email}")
+        print(f"Local part: {local_part}")
+        print(f"Domain part: {domain_part}")
+        print(f"Domain info: {domain_info}")
+        if extracted:
+            print(f"Extrahované jméno: {extracted}")
+        else:
+            print("Nepodařilo se extrahovat jméno.")
+
+        # Sestavení vyhledávacích dotazů
+        search_queries = []
+        if extracted:
+            # 1) Přesná shoda s uvozovkami + doména (firemní e-mail)
             if not domain_info["is_free"]:
-                search_queries.append((f"{variant} {domain_part}", True))
-        
-        # 4) Samostatné vyhledání domény (pokus o nalezení firmy) – zde NEkontrolujeme jméno
-        if domain_part and not domain_info["is_free"]:
-            search_queries.append((domain_part, False))
-    
-    else:
+                # U dotazu s doménou kontrolujeme jméno (protože obsahuje i jméno)
+                search_queries.append((f'"{extracted}" {domain_part}', True))
+            # 2) Přesná shoda jména bez domény
+            search_queries.append((f'"{extracted}"', True))
+            # 3) Generované varianty jména s a bez domény
+            name_variants = generate_name_variants(extracted)
+            for variant in name_variants:
+                # Varianta bez domény
+                search_queries.append((variant, True))
+                # Varianta s doménou (firemní)
+                if not domain_info["is_free"]:
+                    search_queries.append((f"{variant} {domain_part}", True))
+            # 4) Samostatné vyhledání domény (pokus o nalezení firmy) – zde NEkontrolujeme jméno
+            if domain_part and not domain_info["is_free"]:
+                search_queries.append((domain_part, False))
         # Pokud se jméno nepodařilo extrahovat, vyhledáme aspoň e-mail nebo doménu
-        search_queries.append((email_query, False))
-        if domain_part:
-            search_queries.append((domain_part, False))
-    
-    print("Search queries:", search_queries)
+        else:
+            search_queries.append((email, False))
+            if domain_part:
+                search_queries.append((domain_part, False))
+        print("Search queries:", search_queries)
 
-    # Vyhledání informací pomocí DuckDuckGo a uložení s příznakem check_name
-    all_urls = {}
-    for (q, check_name) in search_queries:
-        results = search_duckduckgo(q)
-        for url in results:
-            if url in all_urls:
-                # Pokud se URL již vyskytuje, nová hodnota bude logický součin (pokud jeden dotaz nevyžaduje kontrolu, nastavíme False)
-                all_urls[url] = all_urls[url] and check_name
+        # Vyhledání informací pomocí DuckDuckGo a uložení s příznakem check_name
+        all_urls = {}
+        for (q, check_name) in search_queries:
+            results = search_duckduckgo(q)
+            for url in results:
+                if url in all_urls:
+                    # Pokud se URL již vyskytuje, nová hodnota bude logický součin (pokud jeden dotaz nevyžaduje kontrolu, nastavíme False)
+                    all_urls[url] = all_urls[url] and check_name
+                else:
+                    all_urls[url] = check_name
+        print("DuckDuckGo Results:", list(all_urls.keys()))
+
+        # Nyní zpracujeme každé URL s ohledem na check_name
+        if not all_urls:
+            print('Nebyla nalezena žádná URL.')
+            continue
+        else:
+            results_data = {}
+            driver = initialize_driver()
+            for url, check in all_urls.items():
+                result = analyze_page_content(url, driver)
+                # Pokud check_name je True, provádíme kontrolu, zda stránka obsahuje hledané jméno
+                if check and extracted:
+                    text_clean = remove_diacritics(result.get("full_text", "")).lower()
+                    name_clean = remove_diacritics(extracted).lower()
+                    if name_clean not in text_clean:
+                        print(f"Stránka {url} neobsahuje hledané jméno '{extracted}', vyřazuji.")
+                        continue
+                results_data[url] = result
+            driver.quit()
+
+            for url, data in results_data.items():
+                print(f"\nVýsledky pro {url}")
+                print(f"Title: {data.get('title')}")
+                print(f"Description: {data.get('description')}")
+                print(f"Category: {data.get('category')}, Score: {data.get('score')}")
+                print(f"Social Media Links: {data.get('social_media_links')}")
+
+            # Výběr nejlepšího výsledku na základě nejvyššího skóre
+            best_result = None
+            best_score = 0
+            for result in results_data.values():
+                if result.get("score", 0) > best_score:
+                    best_score = result.get("score", 0)
+                    best_result = result
+
+            if best_result:
+                category = best_result.get("category")
+                summary = f"Title: {best_result.get('title')}, Desc: {best_result.get('description')}"
+                # Aktualizace databáze dle zjištěné kategorie
+                if category.lower() == "social media":
+                    social_media_value = summary + " Links: " + ", ".join(best_result.get("social_media_links", []))
+                    upsert_user(email, social_media=social_media_value)
+                elif category.lower() == "school":
+                    upsert_user(email, school=summary)
+                elif category.lower() == "sports":
+                    upsert_user(email, sports=summary)
+                else:
+                    upsert_user(email, other=summary)
+                print(f"Databáze aktualizována pro {email} s kategorií {category}.")
             else:
-                all_urls[url] = check_name
-
-    print("DuckDuckGo Results:", list(all_urls.keys()))
-
-
-    # Nyní zpracujeme každé URL s ohledem na check_name
-    if not all_urls:
-        print('No search results found')
-    else:
-        results_data = {}
-        driver = initialize_driver()
-        for url, check in all_urls.items():
-            result = analyze_page_content(url, driver)
-            # Pokud check_name je True, provádíme kontrolu, zda stránka obsahuje hledané jméno
-            if check and extracted:
-                text_clean = remove_diacritics(result.get("full_text", "")).lower()
-                name_clean = remove_diacritics(extracted).lower()
-                if name_clean not in text_clean:
-                    print(f"Stránka {url} neobsahuje hledané jméno '{extracted}', vyřazuji.")
-                    continue
-            results_data[url] = result
-        driver.quit()
-
-        for url, data in results_data.items():
-            print(f"\nResults for {url}")
-            print(f"Title: {data.get('title')}")
-            print(f"Description: {data.get('description')}")
-            print(f"Category: {data.get('category')}, Score: {data.get('score')}")
-            print(f"Social Media Links: {data.get('social_media_links')}")
-
-
+                print(f"Pro {email} nebyl nalezen vhodný výsledek scrapingu.")
 
 if __name__ == "__main__":
+    load_dotenv()
     main()
-

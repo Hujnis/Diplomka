@@ -1,55 +1,15 @@
 from flask import Flask, request, render_template_string
 import re
-import os
-import psycopg2
 from dotenv import load_dotenv
+from database import initialize_database, upsert_user
 
 # Načtení proměnných z .env souboru
 load_dotenv()
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 
-# Připojení k databázi pomocí proměnných z .env
-DB_PARAMS = {
-    'dbname': os.getenv('POSTGRES_DB'),
-    'user': os.getenv('POSTGRES_USER'),
-    'password': os.getenv('POSTGRES_PASSWORD'),
-    'host': os.getenv('POSTGRES_HOST'),
-    'port': os.getenv('POSTGRES_PORT')
-}
-
-def get_db_connection():
-    try:
-        return psycopg2.connect(**DB_PARAMS)
-    except psycopg2.OperationalError as e:
-        print(f"❌ Chyba připojení k DB: {e}")
-        return None
-
-# Vytvoření databázové tabulky
-def ensure_db_initialized():
-    conn = get_db_connection()
-    if conn:
-        try:
-            cursor = conn.cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS emails (
-                    id SERIAL PRIMARY KEY,
-                    email TEXT NOT NULL UNIQUE
-                )
-            ''')
-            conn.commit()
-            print("✅ Tabulka 'emails' byla úspěšně inicializována!")
-        except Exception as e:
-            print(f"❌ Chyba při inicializaci tabulky: {e}")
-        finally:
-            cursor.close()
-            conn.close()
-    else:
-        print("❌ Nepodařilo se připojit k databázi pro inicializaci tabulky.")
-
-
-
-ensure_db_initialized()
+# Inicializace databáze při startu aplikace
+initialize_database()
 
 # Kontrola validního emailu
 def is_valid_email(email):
@@ -59,6 +19,7 @@ def is_valid_email(email):
 # Kontrola souhlasu
 def has_consent(consent):
     return consent is not None
+
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -78,22 +39,16 @@ def index():
             message_color = "red"
         else:
             try:
-                conn = psycopg2.connect(**DB_PARAMS)
-                cursor = conn.cursor()
-                cursor.execute('INSERT INTO emails (email) VALUES (%s)', (email,))
-                conn.commit()
-                cursor.close()
-                conn.close()
+                # Použijeme funkci upsert_user z database.py,
+                # která vloží nový záznam s emailem do tabulky user_data.
+                upsert_user(email)
                 message = "Váš e-mail byl přidán do databáze."
                 message_color = "green"
-            except psycopg2.IntegrityError:
-                conn.rollback()  # Resetuje transakci
-                message = "Email již existuje!"
-                message_color = "red"
-            except psycopg2.Error as e:
-                message = f"Database error: {e}"
+            except Exception as e:
+                message = f"Chyba při vkládání e-mailu: {e}"
                 message_color = "red"
 
+                
     return render_template_string('''
         <!doctype html>
         <html lang="en">
