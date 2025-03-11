@@ -19,10 +19,10 @@ from database import get_db_connection, upsert_user
 #___________________________________________________________________________________________________________________
 
 # Absolutní cesta k tomuto souboru (scraper.py)
-script_dir = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Cesta k adresáři "dictionaries"
-dictionaries_dir = os.path.join(script_dir, "dictionaries")
+dictionaries_dir = os.path.join(BASE_DIR, "dictionaries")
 
 #___________________________________________________________________________________________________________________
 #                                                     First name
@@ -335,8 +335,12 @@ def clean_url(url):
 #                                                     SCRAPER
 #___________________________________________________________________________________________________________________
 
-# Inicializace klasifikátoru
-classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")  # dobrý pro zero-shot klasifikaci
+
+# Vytvoříme cestu do složky models/facebook-bart-large-mnli
+model_path = os.path.join(BASE_DIR, "models", "facebook-bart-large-mnli")
+# Nahradíme stávající pipeline definici za lokální model
+classifier = pipeline("zero-shot-classification", model=model_path)
+
 
 def classify_content(text):
     """
@@ -507,7 +511,7 @@ def get_all_users():
 #                                                       MAIN
 #___________________________________________________________________________________________________________________
 def main():
-    # Místo vstupu z klávesnice načteme všechny uživatele z databáze
+    # Načtení všech uživatelů z databáze (tabulka user_data)
     users = get_all_users()
     if not users:
         print("V databázi nebyl nalezen žádný záznam.")
@@ -592,37 +596,42 @@ def main():
                 results_data[url] = result
             driver.quit()
 
+            # Inicializace seznamů pro jednotlivé kategorie
+            social_media_results = []
+            school_results = []
+            sports_results = []
+            other_results = []
+
+            # Procházíme výsledky a rozdělíme je podle kategorie
             for url, data in results_data.items():
-                print(f"\nVýsledky pro {url}")
-                print(f"Title: {data.get('title')}")
-                print(f"Description: {data.get('description')}")
-                print(f"Category: {data.get('category')}, Score: {data.get('score')}")
-                print(f"Social Media Links: {data.get('social_media_links')}")
-
-            # Výběr nejlepšího výsledku na základě nejvyššího skóre
-            best_result = None
-            best_score = 0
-            for result in results_data.values():
-                if result.get("score", 0) > best_score:
-                    best_score = result.get("score", 0)
-                    best_result = result
-
-            if best_result:
-                category = best_result.get("category")
-                summary = f"Title: {best_result.get('title')}, Desc: {best_result.get('description')}"
-                # Aktualizace databáze dle zjištěné kategorie
-                if category.lower() == "social media":
-                    social_media_value = summary + " Links: " + ", ".join(best_result.get("social_media_links", []))
-                    upsert_user(email, social_media=social_media_value)
-                elif category.lower() == "school":
-                    upsert_user(email, school=summary)
-                elif category.lower() == "sports":
-                    upsert_user(email, sports=summary)
+                summary = f"URL: {url}, Title: {data.get('title', 'N/A')}, Desc: {data.get('description', 'N/A')}, Score: {data.get('score', 0):.2f}"
+                category = data.get("category", "").lower()
+                if "social media" in category:
+                    social_media_results.append(summary)
+                elif "school" in category:
+                    school_results.append(summary)
+                elif "sports" in category:
+                    sports_results.append(summary)
                 else:
-                    upsert_user(email, other=summary)
-                print(f"Databáze aktualizována pro {email} s kategorií {category}.")
-            else:
-                print(f"Pro {email} nebyl nalezen vhodný výsledek scrapingu.")
+                    other_results.append(summary)
+
+            social_media_value = "\n".join(social_media_results) if social_media_results else None
+            school_value = "\n".join(school_results) if school_results else None
+            sports_value = "\n".join(sports_results) if sports_results else None
+            other_value = "\n".join(other_results) if other_results else None
+
+            # Uložíme všechna nalezená data do databáze
+            upsert_user(email,
+                        social_media=social_media_value,
+                        school=school_value,
+                        sports=sports_value,
+                        other=other_value)
+            print(f"Databáze aktualizována pro {email} s kategoriemi:")
+            print("Social media:", social_media_value)
+            print("School:", school_value)
+            print("Sports:", sports_value)
+            print("Other:", other_value)
+
 
 if __name__ == "__main__":
     load_dotenv()
