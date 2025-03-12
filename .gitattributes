@@ -1,1 +1,0 @@
-software/scraper/models/facebook-bart-large-mnli/model.safetensors filter=lfs diff=lfs merge=lfs -text
