@@ -336,10 +336,17 @@ def clean_url(url):
 #___________________________________________________________________________________________________________________
 
 
-# Vytvoříme cestu do složky models/facebook-bart-large-mnli
-model_path = os.path.join(BASE_DIR, "models", "facebook-bart-large-mnli")
+# Stáhne lokální model
+models_dir = os.path.join(BASE_DIR, "models", "facebook-bart-large-mnli")
+if not os.path.exists(models_dir):
+    print("Model not found locally. Downloading...")
+    classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+    classifier.save_pretrained(models_dir)
+else:
+    print("Using local model.")
+
 # Nahradíme stávající pipeline definici za lokální model
-classifier = pipeline("zero-shot-classification", model=model_path)
+classifier = pipeline("zero-shot-classification", model=models_dir)
 
 
 def classify_content(text):

@@ -26,7 +26,9 @@ def get_db_connection():
 def initialize_database():
     """
     Inicializuje databázi vytvořením tabulky user_data se sloupci:
-    id, email, social_media, school, sports, other.
+    id, token, 
+    social_media, school, sports, other, 
+    form_submitted, first_name, last_name, email_address, street_address, city_address, telephone, notes
     """
     conn = get_db_connection()
     if conn:
@@ -36,10 +38,19 @@ def initialize_database():
                 CREATE TABLE IF NOT EXISTS user_data (
                     id SERIAL PRIMARY KEY,
                     email TEXT NOT NULL UNIQUE,
+                    token TEXT,
                     social_media TEXT,
                     school TEXT,
                     sports TEXT,
-                    other TEXT
+                    other TEXT,
+                    form_submitted BOOLEAN DEFAULT FALSE,
+                    first_name BOOLEAN DEFAULT FALSE,
+                    last_name BOOLEAN DEFAULT FALSE,
+                    email_address TEXT,
+                    street_address BOOLEAN DEFAULT FALSE,
+                    city_address BOOLEAN DEFAULT FALSE,
+                    telephone BOOLEAN DEFAULT FALSE,
+                    notes TEXT
                 );
             ''')
             conn.commit()
@@ -52,28 +63,45 @@ def initialize_database():
     else:
         print("❌ Nepodařilo se připojit k databázi pro inicializaci.")
 
-def upsert_user(email, social_media=None, school=None, sports=None, other=None):
+def upsert_user(email, token=None, 
+                social_media=None, school=None, sports=None, other=None, 
+                form_submitted=False, first_name=False, last_name=False, email_address=None, street_address=False, city_address=False, telephone=False, notes=None):
     """
     Vloží nový záznam do tabulky user_data nebo aktualizuje existující záznam dle emailu.
-    Používá se tak funkce upsert:
-      - Při vložení se zadá povinný email a volitelné informace.
-      - Pokud záznam s daným emailem již existuje, 
-        aktualizují se sloupce social_media, school, sports a other pouze tehdy, pokud jsou nové hodnoty nenulové.
+    Aktualizují se sloupce: token, social_media, school, sports, other, form_submitted,
+    first_name, last_name, email_address, street_address, city_address, telephone, notes.
     """
     conn = get_db_connection()
     if conn:
         try:
             cur = conn.cursor()
             cur.execute('''
-                INSERT INTO user_data (email, social_media, school, sports, other)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (email)
+                INSERT INTO user_data (
+                    email, token, 
+                    social_media, school, sports, other,
+                    form_submitted, first_name, last_name, email_address,street_address, city_address, telephone, notes
+                )
+                VALUES (%s, %s, 
+                        %s, %s, %s, %s, 
+                        %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (email) 
                 DO UPDATE SET 
+                    token = COALESCE(EXCLUDED.token, user_data.token),
                     social_media = COALESCE(EXCLUDED.social_media, user_data.social_media),
                     school = COALESCE(EXCLUDED.school, user_data.school),
                     sports = COALESCE(EXCLUDED.sports, user_data.sports),
-                    other = COALESCE(EXCLUDED.other, user_data.other);
-            ''', (email, social_media, school, sports, other))
+                    other = COALESCE(EXCLUDED.other, user_data.other),
+                    form_submitted = COALESCE(EXCLUDED.form_submitted, user_data.form_submitted),
+                    first_name = COALESCE(EXCLUDED.first_name, user_data.first_name),
+                    last_name = COALESCE(EXCLUDED.last_name, user_data.last_name),
+                    email_address = COALESCE(EXCLUDED.email_address, user_data.email_address),
+                    street_address = COALESCE(EXCLUDED.street_address, user_data.street_address),
+                    city_address = COALESCE(EXCLUDED.city_address, user_data.city_address),
+                    telephone = COALESCE(EXCLUDED.telephone, user_data.telephone),
+                    notes = COALESCE(EXCLUDED.notes, user_data.notes)
+            ''', (email, token, 
+                  social_media, school, sports, other,
+                  form_submitted, first_name, last_name, email_address, street_address, city_address, telephone, notes))
             conn.commit()
             print("✅ Data byla úspěšně vložena/aktualizována.")
         except Exception as e:

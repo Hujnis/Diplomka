@@ -1,12 +1,16 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, redirect, url_for
 import re
 from dotenv import load_dotenv
 from database import initialize_database, upsert_user
+from itsdangerous import URLSafeTimedSerializer
+import os
 
 # Načtení proměnných z .env souboru
 load_dotenv()
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
+app.secret_key = os.getenv("SECRET_KEY")
+
 
 # Inicializace databáze při startu aplikace
 initialize_database()
@@ -39,11 +43,22 @@ def index():
             message_color = "red"
         else:
             try:
-                # Použijeme funkci upsert_user z database.py,
-                # která vloží nový záznam s emailem do tabulky user_data.
-                upsert_user(email)
+                # Vygenerujeme token založený na e-mailu
+                serializer = URLSafeTimedSerializer(app.secret_key)
+                token = serializer.dumps(email, salt="email-confirmation-salt")
+
+               
+                print("DEBUG: about to call upsert_user with email =", email, flush=True)
+
+                # Uložíme e-mail spolu s vygenerovaným tokenem do databáze
+                upsert_user(email, token=token)
                 message = "Váš e-mail byl přidán do databáze."
                 message_color = "green"
+
+                print("DEBUG:called upsert_user with email =", email, flush=True)
+
+
+                
             except Exception as e:
                 message = f"Chyba při vkládání e-mailu: {e}"
                 message_color = "red"

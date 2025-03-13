@@ -22,9 +22,9 @@ services:
   #________________________________________________________________________
   #                                WEB_API
   #________________________________________________________________________
-  web:
+  web_api:
     build: .
-    container_name: flask_web_api
+    container_name: web_api
     restart: always
     depends_on:
       postgres:
@@ -61,6 +61,27 @@ services:
       - 8.8.8.8
       - 8.8.4.4
 
+  #________________________________________________________________________
+  #                             PHISHING_FORM
+  #________________________________________________________________________
+  phishing_form:
+    build: .
+    container_name: phishing_form
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+      SECRET_KEY: ${SECRET_KEY}
+    volumes:
+      - .:/app
+    # Pokud je phishing_form.py umístěn v kořenovém adresáři repozitáře
+    working_dir: /app/web_api
+    ports:
+      - "5001:5001"
+    command: ["python", "phishing_form.py"]
+    networks:
+      - software_network
   #________________________________________________________________________
   #                                PGADMIN
   #________________________________________________________________________

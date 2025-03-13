@@ -1,6 +1,7 @@
 Flask
 psycopg2
 python-dotenv
+itsdangerous
 selenium
 beautifulsoup4
 duckduckgo_search
