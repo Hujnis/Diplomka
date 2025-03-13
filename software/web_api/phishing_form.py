@@ -175,7 +175,11 @@ def form():
             telephone=telephone_filled,
             notes=notes
         )
-        return "Děkujeme, vaše informace byly úspěšně uloženy!"
+        
+        message = "Děkujeme, vaše informace byly úspěšně uloženy!"
+        message_color = "green"
+        # Formulář se znovu vykreslí se zprávou, stránka zůstane stejná
+        return render_template_string(base_form, token=token, message=message, message_color=message_color)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5001)

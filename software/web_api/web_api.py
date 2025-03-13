@@ -1,7 +1,7 @@
-from flask import Flask, request, render_template_string, redirect, url_for
+from flask import Flask, request, render_template_string
 import re
 from dotenv import load_dotenv
-from database import initialize_database, upsert_user
+from database import initialize_database, upsert_user, get_db_connection
 from itsdangerous import URLSafeTimedSerializer
 import os
 
@@ -24,6 +24,21 @@ def is_valid_email(email):
 def has_consent(consent):
     return consent is not None
 
+def email_exists(email):
+    """Ověří, zda již záznam s daným e-mailem existuje v databázi."""
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM user_data WHERE email = %s", (email,))
+            exists = cur.fetchone() is not None
+            cur.close()
+            conn.close()
+            return exists
+        except Exception as e:
+            print(f"Chyba při ověřování existence e-mailu: {e}")
+            return False
+    return False
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -43,22 +58,20 @@ def index():
             message_color = "red"
         else:
             try:
-                # Vygenerujeme token založený na e-mailu
-                serializer = URLSafeTimedSerializer(app.secret_key)
-                token = serializer.dumps(email, salt="email-confirmation-salt")
+                if email_exists(email):
+                    message = "Email již vložen."
+                    message_color = "red"
 
-               
-                print("DEBUG: about to call upsert_user with email =", email, flush=True)
+                else:
+                    # Vygenerujeme token založený na e-mailu
+                    serializer = URLSafeTimedSerializer(app.secret_key)
+                    token = serializer.dumps(email, salt="email-confirmation-salt")
 
-                # Uložíme e-mail spolu s vygenerovaným tokenem do databáze
-                upsert_user(email, token=token)
-                message = "Váš e-mail byl přidán do databáze."
-                message_color = "green"
+                    # Uložíme e-mail spolu s vygenerovaným tokenem do databáze
+                    upsert_user(email, token=token)
+                    message = "Váš e-mail byl přidán do databáze."
+                    message_color = "green"
 
-                print("DEBUG:called upsert_user with email =", email, flush=True)
-
-
-                
             except Exception as e:
                 message = f"Chyba při vkládání e-mailu: {e}"
                 message_color = "red"
