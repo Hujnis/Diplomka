@@ -1,7 +1,7 @@
 from flask import Flask, request, render_template_string
 import re
 from dotenv import load_dotenv
-from database import initialize_database, upsert_user, get_db_connection
+from database import upsert_user, get_db_connection, initialize_database
 from itsdangerous import URLSafeTimedSerializer
 import os
 
@@ -11,9 +11,44 @@ load_dotenv()
 app = Flask(__name__, static_url_path='/static', static_folder='static')
 app.secret_key = os.getenv("SECRET_KEY")
 
+def check_user_data_table_exists():
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'user_data'
+                );
+            """)
+            exists = cur.fetchone()[0]
+            cur.close()
+            conn.close()
+            return exists
+        except Exception as e:
+            print(f"❌ Chyba při kontrole tabulky user_data: {e}")
+            return False
+    return False
 
-# Inicializace databáze při startu aplikace
-initialize_database()
+
+try:
+    conn = get_db_connection()
+    if conn:
+        print("✅ Připojení k databázi bylo úspěšné.")
+        conn.close()
+
+        # 💡 Kontrola a případná inicializace tabulky user_data
+        if not check_user_data_table_exists():
+            print("⚠️ Tabulka 'user_data' neexistuje. Inicializuji databázi...")
+            initialize_database()
+        else:
+            print("✅ Tabulka 'user_data' existuje.")
+
+    else:
+        print("❌ Nepodařilo se připojit k databázi.")
+except Exception as e:
+    print(f"❌ Chyba při kontrole databáze: {e}")
 
 # Kontrola validního emailu
 def is_valid_email(email):

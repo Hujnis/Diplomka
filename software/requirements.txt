@@ -1,5 +1,5 @@
 Flask
-psycopg2
+psycopg2-binary
 python-dotenv
 itsdangerous
 selenium
@@ -7,3 +7,4 @@ beautifulsoup4
 duckduckgo_search
 transformers
 torch
+accelerate>=0.26.0

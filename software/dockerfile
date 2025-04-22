@@ -1,17 +1,15 @@
 # Použití Python image
 FROM python:3.10-slim
 
-# Instalace potřebných balíčků včetně wget, unzip, chromium, libpq-dev, gcc a python3-dev
-RUN apt-get update && apt-get install -y wget unzip chromium libpq-dev gcc python3-dev
+# # Instalace potřebných balíčků včetně wget, unzip, chromium, libpq-dev, gcc a python3-dev
+ RUN apt-get update && apt-get install -y wget unzip chromium libpq-dev gcc python3-dev
 
-# Instalace Chromedriveru (příklad verze 133)
-RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/133.0.6943.126/linux64/chromedriver-linux64.zip" \
-    && unzip /tmp/chromedriver.zip -d /tmp/ \
-    && mv /tmp/chromedriver-linux64/chromedriver /usr/bin/chromedriver \
-    && chmod +x /usr/bin/chromedriver \
-    && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64
-
-
+ # Instalace Chromedriveru (příklad verze 133)
+ RUN wget -q -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/133.0.6943.126/linux64/chromedriver-linux64.zip" \
+     && unzip /tmp/chromedriver.zip -d /tmp/ \
+     && mv /tmp/chromedriver-linux64/chromedriver /usr/bin/chromedriver \
+     && chmod +x /usr/bin/chromedriver \
+     && rm -rf /tmp/chromedriver.zip /tmp/chromedriver-linux64
 
 # Nastavení pracovního adresáře
 WORKDIR /app

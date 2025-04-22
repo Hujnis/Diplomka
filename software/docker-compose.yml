@@ -20,6 +20,82 @@ services:
       - software_network
 
   #________________________________________________________________________
+  #                                PGADMIN
+  #________________________________________________________________________
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - software_network
+
+  #________________________________________________________________________
+  #                                SCRAPER
+  #________________________________________________________________________
+  scraper:
+    build: .
+    container_name: scraper
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+    volumes:
+      - .:/app
+      - model_data:/app/scraper/models
+    working_dir: /app/scraper
+    command: ["python", "scraper.py"]
+    networks:
+      - software_network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+  #________________________________________________________________________
+  #                           PHISHING_GENERATOR
+  #________________________________________________________________________
+  phishing_generator:
+    build: .
+    container_name: phishing_generator
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
+      HF_TOKEN: ${HF_TOKEN}
+    volumes:
+      - .:/app
+      - model_data:/app/scraper/models
+    working_dir: /app/scraper
+    command: ["python", "phishing_generator.py"]
+    networks:
+      - software_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  #________________________________________________________________________
   #                                WEB_API
   #________________________________________________________________________
   web_api:
@@ -41,27 +117,6 @@ services:
       - software_network
 
   #________________________________________________________________________
-  #                                SCRAPER
-  #________________________________________________________________________
-  scraper:
-    build: .
-    container_name: scraper
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
-    volumes:
-      - .:/app
-    working_dir: /app/scraper
-    command: ["python", "scraper.py"]
-    networks:
-      - software_network
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-
-  #________________________________________________________________________
   #                             PHISHING_FORM
   #________________________________________________________________________
   phishing_form:
@@ -75,36 +130,18 @@ services:
       SECRET_KEY: ${SECRET_KEY}
     volumes:
       - .:/app
-    # Pokud je phishing_form.py umístěn v kořenovém adresáři repozitáře
+
     working_dir: /app/web_api
     ports:
       - "5001:5001"
     command: ["python", "phishing_form.py"]
     networks:
       - software_network
-  #________________________________________________________________________
-  #                                PGADMIN
-  #________________________________________________________________________
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
-    restart: always
-    depends_on:
-      - postgres
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    networks:
-      - software_network
-
 
 volumes:
   pg_data:
   pgadmin_data:
+  model_data:
 
 networks:
   software_network:

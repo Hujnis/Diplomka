@@ -10,9 +10,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
-from transformers import pipeline
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline
 from dotenv import load_dotenv
 from database import get_db_connection, upsert_user
+import torch
 
 #___________________________________________________________________________________________________________________
 #                                                     DICTIONARY
@@ -335,19 +336,35 @@ def clean_url(url):
 #                                                     SCRAPER
 #___________________________________________________________________________________________________________________
 
-
-# Stáhne lokální model
 models_dir = os.path.join(BASE_DIR, "models", "facebook-bart-large-mnli")
+
+# Kontrola, zda model existuje, pokud ne, stáhne ho
 if not os.path.exists(models_dir):
     print("Model not found locally. Downloading...")
-    classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
-    classifier.save_pretrained(models_dir)
+    model = AutoModelForSequenceClassification.from_pretrained("facebook/bart-large-mnli")
+    tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-mnli")
+
+    # Uloží model lokálně
+    model.save_pretrained(models_dir)
+    tokenizer.save_pretrained(models_dir)
+    print(f"Model stažen do: {models_dir}")
 else:
     print("Using local model.")
 
-# Nahradíme stávající pipeline definici za lokální model
-classifier = pipeline("zero-shot-classification", model=models_dir)
+# Kontrola dostupnosti GPU
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Použitý hardware: {'GPU' if device == 'cuda' else 'CPU'}")
 
+# Načtení modelu a tokenizéru s podporou GPU
+model = AutoModelForSequenceClassification.from_pretrained(
+    models_dir,
+    torch_dtype=torch.float16 if device == "cuda" else torch.float32,  # Optimalizace paměti pro GPU
+    device_map="auto" if device == "cuda" else None  # Automatické mapování na GPU
+)
+tokenizer = AutoTokenizer.from_pretrained(models_dir)
+
+# Nastavení pipeline s ručně načteným modelem a tokenizérem
+classifier = pipeline("zero-shot-classification", model=model, tokenizer=tokenizer)
 
 def classify_content(text):
     """
@@ -629,6 +646,7 @@ def main():
 
             # Uložíme všechna nalezená data do databáze
             upsert_user(email,
+                        email_domain=domain_part,
                         social_media=social_media_value,
                         school=school_value,
                         sports=sports_value,
