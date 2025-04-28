@@ -1,0 +1,78 @@
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f2f4f8;
+    margin: 0;
+    padding: 0;
+  }
+  
+  .header {
+    background-color: #003366;
+    color: white;
+    padding: 15px 30px;
+    font-size: 18px;
+    font-weight: 500;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  
+  .container {
+    max-width: 520px;
+    margin: 60px auto;
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  }
+  
+  h2 {
+    margin-bottom: 20px;
+    font-weight: 500;
+    color: #2c3e50;
+  }
+  
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="url"] {
+    width: 100%;
+    padding: 10px;
+    margin: 6px 0 18px 0;
+    border: 1px solid #d1d1d1;
+    border-radius: 4px;
+    font-size: 15px;
+    box-sizing: border-box;
+  }
+  
+  input[type="checkbox"] {
+    margin-bottom: 16px;
+    margin-right: 6px;
+    transform: scale(1.6);     /* zvětší velikost checkboxu */
+    cursor: pointer;           /* ručička při najetí myší */
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  
+  input[type="submit"] {
+    background-color: #0078d4;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  
+  input[type="submit"]:hover {
+    background-color: #005ea6;
+  }
+  
+  .message {
+    margin-top: 20px;
+    font-size: 14px;
+    font-weight: bold;
+  }
+  
+

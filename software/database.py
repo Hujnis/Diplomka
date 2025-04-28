@@ -93,5 +93,38 @@ def upsert_user(email, token=None, email_domain=None,
     else:
         print("❌ Nepodařilo se připojit k databázi.")
 
+#fuknce pro formulář - získání tokenu
+def token_exists(token):
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT 1 FROM user_data WHERE token = %s", (token,))
+            exists = cur.fetchone() is not None
+            cur.close()
+            conn.close()
+            return exists
+        except Exception as e:
+            print(f"❌ Chyba při kontrole tokenu: {e}")
+    return False
+
+#fuknce pro formulář - získání id z tokenu
+def get_user_id_by_token(token):
+    conn = get_db_connection()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT id FROM user_data WHERE token = %s", (token,))
+            result = cur.fetchone()
+            cur.close()
+            conn.close()
+            if result:
+                return result[0]
+        except Exception as e:
+            print(f"Chyba při získávání ID z tokenu: {e}")
+    return None
+
+
+
 if __name__ == '__main__':
     initialize_database()

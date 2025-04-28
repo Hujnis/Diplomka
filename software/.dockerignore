@@ -1,0 +1,25 @@
+# Ignoruj modely
+scraper/models/
+scraper/__pycache__/
+web_api/__pycache__/
+
+# Ignoruj všechny __pycache__ a tempy
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignoruj citlivé soubory
+.env
+
+# Ignoruj zálohy a velké soubory
+*.safetensors
+*.ckpt
+*.bin
+*.h5
+*.onnx
+
+# Ignoruj vše co je auto-generované
+.DS_Store
+Thumbs.db
+.qodo

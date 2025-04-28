@@ -1,0 +1,11 @@
+# Dockerfile.chromium
+FROM python:3.12.3-slim AS chromium-base
+
+# Chromium a chromedriver – kompatibilní verze
+RUN apt-get update && apt-get install -y \
+    chromium chromium-driver \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Cesty k binárkám pro pozdější použití
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMEDRIVER_BIN=/usr/bin/chromedriver

@@ -1,0 +1,132 @@
+{
+    "users": {
+        "1": [
+            {
+                "timestamp": "2025-04-28T06:53:24.243639Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "b5p",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "first_name": true,
+                    "last_name": true,
+                    "position": false,
+                    "department": false,
+                    "phone": false,
+                    "linkedin": false,
+                    "consent": false
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:53:47.143046Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "b5p",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "first_name": true,
+                    "last_name": true,
+                    "position": false,
+                    "department": false,
+                    "phone": false,
+                    "linkedin": false,
+                    "consent": true
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:53:52.866274Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "b5p",
+                "submitted": true,
+                "validation_failed": false,
+                "data": {
+                    "first_name": true,
+                    "last_name": true,
+                    "position": true,
+                    "department": true,
+                    "phone": true,
+                    "linkedin": false,
+                    "consent": true
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:54:00.434400Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "c9d",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "login": true,
+                    "password": true,
+                    "device_name": false,
+                    "approve_device": false
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:54:32.623554Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "c9d",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "login": true,
+                    "password": true,
+                    "device_name": false,
+                    "approve_device": true
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:54:39.481276Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "c9d",
+                "submitted": true,
+                "validation_failed": false,
+                "data": {
+                    "login": true,
+                    "password": true,
+                    "device_name": true,
+                    "approve_device": true
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:54:44.267956Z",
+                "token": "InRvbWFzLmh1am5ha0B1bm9iLmN6Ig.aAanlg.b5eXbehggIuoeWa4aJ6PCSmjH0s",
+                "action": "c9d",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "login": true,
+                    "password": true,
+                    "device_name": true,
+                    "approve_device": false
+                }
+            }
+        ],
+        "2": [
+            {
+                "timestamp": "2025-04-28T06:52:46.654163Z",
+                "token": "InQuaHVqbmFrQGFsemEuY3oi.aAkR8g.uyvu9KL0c7Pv_wZpNKGEkC8u-Jw",
+                "action": "a1z",
+                "submitted": true,
+                "validation_failed": true,
+                "data": {
+                    "login": true,
+                    "old_password": true,
+                    "new_password": false
+                }
+            },
+            {
+                "timestamp": "2025-04-28T06:53:11.446872Z",
+                "token": "InQuaHVqbmFrQGFsemEuY3oi.aAkR8g.uyvu9KL0c7Pv_wZpNKGEkC8u-Jw",
+                "action": "a1z",
+                "submitted": true,
+                "validation_failed": false,
+                "data": {
+                    "login": true,
+                    "old_password": true,
+                    "new_password": true
+                }
+            }
+        ]
+    }
+}

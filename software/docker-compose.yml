@@ -50,9 +50,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
     volumes:
-      - .:/app
-      - model_data:/app/scraper/models
-    working_dir: /app/scraper
+      - .:/software
+      - model_data:/software/scraper/models
+    working_dir: /software/scraper
     command: ["python", "scraper.py"]
     networks:
       - software_network
@@ -70,30 +70,7 @@ services:
   #________________________________________________________________________
   #                           PHISHING_GENERATOR
   #________________________________________________________________________
-  phishing_generator:
-    build: .
-    container_name: phishing_generator
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
-      HF_TOKEN: ${HF_TOKEN}
-    volumes:
-      - .:/app
-      - model_data:/app/scraper/models
-    working_dir: /app/scraper
-    command: ["python", "phishing_generator.py"]
-    networks:
-      - software_network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+
 
   #________________________________________________________________________
   #                                WEB_API
@@ -108,8 +85,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
     volumes:
-      - .:/app
-    working_dir: /app/web_api
+      - .:/software
+    working_dir: /software/web_api
     ports:
       - "5000:5000"
     command: ["python", "web_api.py"]
@@ -117,11 +94,11 @@ services:
       - software_network
 
   #________________________________________________________________________
-  #                             PHISHING_FORM
+  #                             DYNAMIC_FORM
   #________________________________________________________________________
-  phishing_form:
+  dynamic_form:
     build: .
-    container_name: phishing_form
+    container_name: dynamic_form
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,12 +106,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT}/${POSTGRES_DB}
       SECRET_KEY: ${SECRET_KEY}
     volumes:
-      - .:/app
-
-    working_dir: /app/web_api
+      - .:/software
+    working_dir: /software/web_api
     ports:
       - "5001:5001"
-    command: ["python", "phishing_form.py"]
+    command: ["python", "dynamic_form.py"]
     networks:
       - software_network
 

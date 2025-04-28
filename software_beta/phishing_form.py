@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 app = Flask(__name__, static_url_path='/static', static_folder='static')
-app.secret_key = os.getenv("SECRET_KEY", "default-secret-key")
+app.secret_key = os.getenv("SECRET_KEY")
 serializer = URLSafeTimedSerializer(app.secret_key)
 
 def get_email_from_token(token):
